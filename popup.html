@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div>
+        <div class="title">Elden Overlay</div>
+        <div class="sub">Summon signs for your browser</div>
+      </div>
+      <div class="rune" aria-hidden="true"></div>
+    </div>
+
+    <div class="panel">
+      <label class="label" for="text">Custom Text</label>
+      <input class="input" id="text" placeholder="YOU DIED" />
+
+      <label class="label" for="volume">Volume</label>
+      <input class="range" id="volume" type="range" min="0" max="1" step="0.05" />
+
+      <div class="row" style="margin-top:10px">
+        <button class="btn" id="save">Save</button>
+        <button class="btn secondary" id="testGrace" title="Play grace sound">Grace</button>
+      </div>
+
+      <div class="status" id="status"></div>
+    </div>
+
+    <div class="panel">
+      <div class="label">Test Overlay (current tab)</div>
+      <div class="row">
+        <button class="btn danger" id="testDied">You Died</button>
+        <button class="btn" id="testVictory">Victory</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn secondary" id="testFailed">Foul Tarnished</button>
+      </div>
+      <div class="footer">Tip: won’t run on chrome:// or the Web Store.</div>
+    </div>
+
+    <script src="popup.js"></script>
+  </div>
+</body>
+</html>

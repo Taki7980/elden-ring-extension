@@ -1,0 +1,185 @@
+@font-face {
+  font-family: "SoulsFont";
+  src: url("font/cinzel.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+}
+
+:root {
+  --bg: #0b0c0f;
+  --panel: rgba(18, 18, 22, 0.85);
+  --panel-2: rgba(28, 28, 34, 0.8);
+  --gold: #d4af37;
+  --gold-2: #b9932b;
+  --text: #e8e6e3;
+  --muted: rgba(232, 230, 227, 0.7);
+  --danger: #8b0000;
+  --radius: 12px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 320px;
+  background:
+    radial-gradient(70% 55% at 50% 8%, rgba(212, 175, 55, 0.20), transparent 60%),
+    radial-gradient(90% 70% at 50% 105%, rgba(139, 0, 0, 0.12), transparent 65%),
+    linear-gradient(180deg, #050509, var(--bg));
+  color: var(--text);
+  font-family: "SoulsFont", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  overflow: hidden;
+}
+
+/* Erdtree motes */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 20% 35%, rgba(212, 175, 55, 0.20) 0 1px, transparent 2px),
+    radial-gradient(circle at 62% 22%, rgba(212, 175, 55, 0.14) 0 1px, transparent 2px),
+    radial-gradient(circle at 75% 70%, rgba(212, 175, 55, 0.12) 0 1px, transparent 2px),
+    radial-gradient(circle at 35% 84%, rgba(212, 175, 55, 0.10) 0 1px, transparent 2px);
+  opacity: 0.65;
+  animation: popup-motes 2.8s ease-in-out infinite;
+}
+
+@keyframes popup-motes {
+  0% { transform: translateY(0px); opacity: 0.55; }
+  50% { transform: translateY(-10px); opacity: 0.85; }
+  100% { transform: translateY(0px); opacity: 0.55; }
+}
+
+.container {
+  padding: 12px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.title {
+  font-size: 16px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.sub {
+  margin-top: 2px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.rune {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid rgba(212, 175, 55, 0.45);
+  box-shadow:
+    0 0 0 2px rgba(212, 175, 55, 0.10) inset,
+    0 0 18px rgba(212, 175, 55, 0.12);
+  background:
+    radial-gradient(circle at 30% 30%, rgba(212, 175, 55, 0.38), transparent 45%),
+    radial-gradient(circle at 70% 70%, rgba(212, 175, 55, 0.18), transparent 52%),
+    conic-gradient(from 210deg, rgba(212,175,55,0.00), rgba(212,175,55,0.18), rgba(212,175,55,0.00));
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid rgba(212, 175, 55, 0.22);
+  border-radius: var(--radius);
+  padding: 10px;
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.55);
+}
+
+.panel + .panel { margin-top: 10px; }
+
+.label {
+  display: block;
+  margin: 8px 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.input {
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(212, 175, 55, 0.20);
+  background: rgba(10, 10, 14, 0.55);
+  color: var(--text);
+  outline: none;
+}
+
+.input:focus {
+  border-color: rgba(212, 175, 55, 0.45);
+  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.12);
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+}
+
+.btn {
+  width: 100%;
+  padding: 10px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(212, 175, 55, 0.28);
+  background: linear-gradient(180deg, rgba(212, 175, 55, 0.22), rgba(212, 175, 55, 0.10));
+  color: var(--text);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.btn:hover {
+  border-color: rgba(212, 175, 55, 0.45);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn.danger {
+  border-color: rgba(139, 0, 0, 0.55);
+  background: linear-gradient(180deg, rgba(139, 0, 0, 0.35), rgba(139, 0, 0, 0.16));
+}
+
+.btn.secondary {
+  background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.05));
+  border-color: rgba(255,255,255,0.18);
+}
+
+.status {
+  margin-top: 8px;
+  min-height: 16px;
+  font-size: 11px;
+  letter-spacing: 0.10em;
+  color: var(--muted);
+}
+
+.footer {
+  margin-top: 10px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(232, 230, 227, 0.55);
+}
+
+.range {
+  width: 100%;
+}
