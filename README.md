@@ -301,7 +301,7 @@ chrome.storage.sync.clear();
 ---
 
 ## 📞 Contact for Privacy Concerns
-
+nirjharsarkar8@gmail.com
 If you discover any privacy issues:
 
 1. **Report immediately**: Open GitHub issue with "PRIVACY" label
