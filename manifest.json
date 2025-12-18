@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "Elden Overlay",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Elden Ring themed overlays with unique sound cues for death, victory, grace, and bosses.",
-  "permissions": ["storage", "activeTab", "tabs", "scripting", "offscreen"],
+  "permissions": ["storage", "activeTab", "tabs", "scripting"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
@@ -12,7 +12,8 @@
     {
       "matches": ["<all_urls>"],
       "js": ["content.js"],
-      "css": ["style.css"]
+      "css": ["style.css"],
+      "run_at": "document_start"
     }
   ],
   "action": {
@@ -28,7 +29,6 @@
     "48": "icon48.png",
     "128": "icon128.png"
   },
-
   "web_accessible_resources": [
     {
       "resources": ["sounds/*", "font/*"],
@@ -36,4 +36,3 @@
     }
   ]
 }
-

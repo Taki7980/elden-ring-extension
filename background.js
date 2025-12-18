@@ -16,7 +16,6 @@ const isRestrictedUrl = (url) => {
 const injectIntoTab = (tabId, url) => {
   if (isRestrictedUrl(url)) return;
 
-  // Inject CSS + script. Script is guarded to avoid double-initialization.
   chrome.scripting.insertCSS({ target: { tabId }, files: ["style.css"] }, () => {
     void chrome.runtime.lastError;
     chrome.scripting.executeScript({ target: { tabId }, files: ["content.js"] }, () => {
@@ -35,85 +34,25 @@ const injectAllOpenTabs = () => {
 };
 
 chrome.runtime.onInstalled.addListener(({ reason }) => {
-  // Only set defaults on first install; don't wipe user settings on updates.
   if (reason === "install") {
     chrome.storage.sync.set({
       volume: 0.8,
       customText: "YOU DIED"
     });
   }
-
-  // Ensure audio is ready.
-  void ensureOffscreen();
-
-  // Ensure the extension works immediately on already-open tabs.
   injectAllOpenTabs();
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  // Ensure audio is ready.
-  void ensureOffscreen();
-
-  // Ensure the extension works after browser restart.
   injectAllOpenTabs();
 });
 
-// Also run once when the service worker starts (e.g. after clicking "Reload" in chrome://extensions).
+// Run once when service worker starts
 try {
-  void ensureOffscreen();
   injectAllOpenTabs();
 } catch {
   // ignore
 }
-
-const OFFSCREEN_URL = "offscreen.html";
-
-let offscreenCreating = null;
-
-const ensureOffscreen = async () => {
-  // Deduplicate concurrent createDocument() calls.
-  if (offscreenCreating) return offscreenCreating;
-
-  offscreenCreating = (async () => {
-    // MV3: offscreen document used for reliable audio playback.
-    try {
-      if (chrome.offscreen?.hasDocument) {
-        const has = await chrome.offscreen.hasDocument();
-        if (has) return;
-      }
-
-      await chrome.offscreen.createDocument({
-        url: OFFSCREEN_URL,
-        reasons: [chrome.offscreen.Reason.AUDIO_PLAYBACK],
-        justification: "Play Elden Ring sounds on tab events reliably."
-      });
-    } catch {
-      // ignore
-    }
-  })();
-
-  try {
-    await offscreenCreating;
-  } finally {
-    offscreenCreating = null;
-  }
-};
-
-const playExtensionSound = async (file) => {
-  try {
-    await ensureOffscreen();
-    chrome.runtime.sendMessage({ type: "OFFSCREEN_PLAY", file });
-  } catch {
-    // ignore
-  }
-};
-
-// Allow content scripts / popup to request reliable audio.
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (!msg || msg.type !== "PLAY_SOUND") return;
-  void playExtensionSound(msg.file);
-  sendResponse?.({ ok: true });
-});
 
 const injectIfNeededThenSend = (tabId, url, message) => {
   if (isRestrictedUrl(url)) return;
@@ -122,34 +61,47 @@ const injectIfNeededThenSend = (tabId, url, message) => {
     const err = chrome.runtime.lastError;
     if (!err) return;
 
-    // If the content script isn't present yet, inject it and retry.
     if ((err.message || "").includes("Receiving end does not exist")) {
       chrome.scripting.insertCSS({ target: { tabId }, files: ["style.css"] }, () => {
         void chrome.runtime.lastError;
         chrome.scripting.executeScript({ target: { tabId }, files: ["content.js"] }, () => {
           void chrome.runtime.lastError;
-          chrome.tabs.sendMessage(tabId, message, () => void chrome.runtime.lastError);
+          setTimeout(() => {
+            chrome.tabs.sendMessage(tabId, message, () => void chrome.runtime.lastError);
+          }, 100);
         });
       });
     }
   });
 };
 
-// Note: we can't display an overlay *inside* a tab that's already closing.
-// Instead we show it on the remaining active tab in the same window.
-chrome.tabs.onRemoved.addListener((_tabId, _removeInfo) => {
-  // Always play death sound on close (reliable, even if overlay doesn't paint).
-  void playExtensionSound("died.mp3");
+// TAB CLOSE: Send message to show overlay and play sound
+chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
+  console.log("Tab closed");
+  
+  // Try to show overlay on remaining tabs in the same window
+  if (removeInfo.windowId) {
+    chrome.tabs.query({ active: true, windowId: removeInfo.windowId }, (tabs) => {
+      const activeTab = tabs?.[0];
+      if (activeTab?.id && !isRestrictedUrl(activeTab.url)) {
+        setTimeout(() => {
+          injectIfNeededThenSend(activeTab.id, activeTab.url, {
+            type: "ELDEN_TRIGGER",
+            action: "overlay",
+            stateKey: "died"
+          });
+        }, 100);
+      }
+    });
+  }
 });
 
-// On new tab: show "LOST GRACE FOUND" once the tab reaches a *non-restricted* URL.
-// (The default New Tab page is chrome:// and can't be scripted.)
+// NEW TAB: Show grace overlay
 chrome.tabs.onCreated.addListener((tab) => {
   if (!tab?.id) return;
   const tabId = tab.id;
 
-  // On every new tab, play grace sound from the extension (works even on chrome://newtab).
-  void playExtensionSound("grace.mp3");
+  console.log("New tab created");
 
   const cleanupTimer = setTimeout(() => {
     chrome.tabs.onUpdated.removeListener(onUpdated);
@@ -161,24 +113,22 @@ chrome.tabs.onCreated.addListener((tab) => {
 
     const url = updatedTab?.url;
     if (isRestrictedUrl(url)) {
-      // Still on chrome://newtab or another restricted page; keep waiting.
       return;
     }
 
-    // Ensure scripts are present on the new page.
     injectIntoTab(tabId, url);
 
     clearTimeout(cleanupTimer);
     chrome.tabs.onUpdated.removeListener(onUpdated);
 
-    injectIfNeededThenSend(tabId, url, {
-      type: "ELDEN_TRIGGER",
-      action: "overlay",
-      stateKey: "grace",
-      force: true
-    });
+    setTimeout(() => {
+      injectIfNeededThenSend(tabId, url, {
+        type: "ELDEN_TRIGGER",
+        action: "overlay",
+        stateKey: "grace"
+      });
+    }, 150);
   };
 
   chrome.tabs.onUpdated.addListener(onUpdated);
 });
-

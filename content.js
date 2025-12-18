@@ -1,9 +1,10 @@
-// Guard: this file may be injected multiple times (service worker sleeps/restarts).
-// Prevent duplicate event listeners.
+// Guard: prevent duplicate initialization
 if (globalThis.__eldenOverlayInjected) {
-  // Already initialized in this tab.
+  // Already initialized
 } else {
   globalThis.__eldenOverlayInjected = true;
+
+console.log("Elden Overlay: Content script initialized");
 
 /*************************
  * STATES
@@ -17,8 +18,7 @@ const STATES = {
   grace: {
     text: "LOST GRACE FOUND",
     color: "#d4af37",
-    // Played from the extension (offscreen) so it works reliably without page gesture.
-    sound: null
+    sound: "grace.mp3"
   },
   victory: {
     text: "GREAT RUNE RESTORED",
@@ -28,8 +28,12 @@ const STATES = {
   failed: {
     text: "FOUL TARNISHED",
     color: "#c2a14d",
-    // Default boss line for failure.
     sound: "morgott.mp3"
+  },
+  malenia: {
+    text: "I AM MALENIA",
+    color: "#b8860b",
+    sound: "malenia.mp3"
   }
 };
 
@@ -45,54 +49,125 @@ let overlayPending = false;
 
 chrome.storage.sync.get(settings, data => {
   settings = { ...settings, ...data };
+  console.log("Elden Overlay: Settings loaded:", settings);
 });
 
-// Allow the popup/background to manually trigger overlays/sounds on the current page.
+chrome.storage.onChanged.addListener((changes) => {
+  if (changes.volume) {
+    settings.volume = changes.volume.newValue;
+    console.log("Elden Overlay: Volume updated:", settings.volume);
+  }
+  if (changes.customText) {
+    settings.customText = changes.customText.newValue;
+    console.log("Elden Overlay: Custom text updated:", settings.customText);
+  }
+});
+
+// Listen for triggers from background script
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (!msg || msg.type !== "ELDEN_TRIGGER") return;
+
+  console.log("Elden Overlay: Received trigger:", msg);
 
   const { action, stateKey, customText } = msg;
 
   if (action === "overlay") {
     showOverlay(stateKey, customText);
-    sendResponse?.({ ok: true });
-    return;
+    sendResponse({ ok: true });
+    return true;
   }
 
-  if (action === "sound") {
-    playSound(stateKey);
-    sendResponse?.({ ok: true });
-    return;
-  }
-
-  sendResponse?.({ ok: false, error: "unknown_action" });
+  sendResponse({ ok: false, error: "unknown_action" });
 });
 
 /*************************
- * HELPERS
+ * AUDIO MANAGER - SIMPLIFIED
  *************************/
+let audioContext = null;
+let audioBuffers = {};
 
-const localPlaySound = (file) => {
+// Initialize Web Audio API (more reliable than Audio elements)
+const initAudio = async () => {
+  if (audioContext) return;
+  
   try {
-    const audio = new Audio(chrome.runtime.getURL(`sounds/${file}`));
-    audio.volume = settings.volume;
-    audio.play().catch(() => {});
-  } catch {
-    // ignore
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    console.log("Audio context created");
+  } catch (err) {
+    console.error("Failed to create audio context:", err);
   }
 };
 
-const playSound = (file) => {
-  // Prefer offscreen playback (reliable), but fall back to in-page audio if the
-  // service worker/offscreen document isn't available for some reason.
+// Load and cache audio file
+const loadSound = async (filename) => {
+  if (audioBuffers[filename]) {
+    return audioBuffers[filename];
+  }
+
   try {
-    chrome.runtime.sendMessage({ type: "PLAY_SOUND", file }, () => {
-      if (chrome.runtime.lastError) {
-        localPlaySound(file);
-      }
-    });
-  } catch {
-    localPlaySound(file);
+    const url = chrome.runtime.getURL(`sounds/${filename}`);
+    console.log("Loading audio from:", url);
+    
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    
+    const arrayBuffer = await response.arrayBuffer();
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    
+    audioBuffers[filename] = audioBuffer;
+    console.log("Audio loaded successfully:", filename);
+    return audioBuffer;
+  } catch (err) {
+    console.error("Failed to load audio:", filename, err);
+    return null;
+  }
+};
+
+// Play sound using Web Audio API
+const playSound = async (filename) => {
+  console.log("Playing sound:", filename);
+  
+  try {
+    await initAudio();
+    
+    // Resume context if suspended (browser autoplay policy)
+    if (audioContext.state === 'suspended') {
+      await audioContext.resume();
+    }
+    
+    const buffer = await loadSound(filename);
+    if (!buffer) {
+      console.error("No buffer for:", filename);
+      return;
+    }
+    
+    const source = audioContext.createBufferSource();
+    source.buffer = buffer;
+    
+    const gainNode = audioContext.createGain();
+    gainNode.gain.value = settings.volume;
+    
+    source.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    source.start(0);
+    console.log("Sound playing:", filename);
+    
+  } catch (err) {
+    console.error("Error playing sound:", filename, err);
+    
+    // Fallback to basic Audio element
+    try {
+      console.log("Trying fallback audio method");
+      const audio = new Audio(chrome.runtime.getURL(`sounds/${filename}`));
+      audio.volume = settings.volume;
+      await audio.play();
+      console.log("Fallback audio played");
+    } catch (fallbackErr) {
+      console.error("Fallback audio also failed:", fallbackErr);
+    }
   }
 };
 
@@ -101,12 +176,20 @@ const playSound = (file) => {
  *************************/
 function showOverlay(stateKey, customText, opts = {}) {
   const state = STATES[stateKey];
-  if (!state) return;
+  if (!state) {
+    console.error("Elden Overlay: Invalid state key:", stateKey);
+    return;
+  }
+
+  console.log("Elden Overlay: Showing overlay:", stateKey);
 
   const immediate = Boolean(opts.immediate);
 
-  // Prevent re-entrancy while we have pending timeouts / an overlay on screen.
-  if (overlayPending || document.getElementById("elden-overlay")) return;
+  // Prevent re-entrancy
+  if (overlayPending || document.getElementById("elden-overlay")) {
+    console.log("Elden Overlay: Already showing, skipping");
+    return;
+  }
   overlayPending = true;
 
   // Camera shake on death
@@ -128,20 +211,21 @@ function showOverlay(stateKey, customText, opts = {}) {
 
   overlay.appendChild(text);
 
-  // Append to <html> rather than <body> so we're less affected by sites that
-  // transform/contain the body (which can break fixed positioning).
+  // Append to <html> for better fixed positioning
   (document.documentElement || document.body).appendChild(overlay);
 
-  // On unload, requestAnimationFrame may never fire. For that case, show instantly.
   if (immediate) {
     overlay.classList.add("show");
   } else {
     requestAnimationFrame(() => overlay.classList.add("show"));
   }
 
-  if (state.sound) playSound(state.sound);
+  // Play sound
+  if (state.sound) {
+    console.log("Elden Overlay: Playing state sound:", state.sound);
+    playSound(state.sound);
+  }
 
-  // During unload, timers may not fire; in that case we just leave it.
   if (immediate) return;
 
   const visibleMs = stateKey === "grace" ? 2400 : 1800;
@@ -151,16 +235,14 @@ function showOverlay(stateKey, customText, opts = {}) {
     setTimeout(() => {
       overlay.remove();
       overlayPending = false;
+      console.log("Elden Overlay: Overlay removed");
     }, 350);
   }, visibleMs);
 }
 
 /*************************
- * SOUND TRIGGERS
+ * FORM VALIDATION TRIGGERS
  *************************/
-
-// Field validation failure (blank required fields, invalid email, etc.)
-// This fires on most sites that use native HTML5 validation.
 let lastFailedAt = 0;
 const failedCooldownMs = 2500;
 
@@ -178,21 +260,23 @@ const triggerFailed = () => {
     failStreak = 0;
   }, 15000);
 
-  // Use all boss sounds: Morgott usually, Malenia on streaks.
-  if (failStreak >= 3) {
-    playSound("malenia.mp3");
-  } else {
-    playSound("morgott.mp3");
-  }
+  console.log("Elden Overlay: Validation failed, streak:", failStreak);
 
-  showOverlay("failed");
+  // Malenia on 3+ streaks, Morgott normally
+  if (failStreak >= 3) {
+    showOverlay("malenia");
+  } else {
+    showOverlay("failed");
+  }
 };
 
-// Field validation failure (blank required fields, invalid email, etc.)
-// This fires on most sites that use native HTML5 validation.
-document.addEventListener("invalid", () => triggerFailed(), true);
+// HTML5 validation failure
+document.addEventListener("invalid", () => {
+  console.log("Elden Overlay: Invalid event triggered");
+  triggerFailed();
+}, true);
 
-// Also catch "leave blank" on required fields when the user tabs/clicks away.
+// Blur on required fields
 document.addEventListener(
   "blur",
   (e) => {
@@ -200,57 +284,216 @@ document.addEventListener(
     if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement)) return;
     if (!el.required) return;
 
-    // For checkboxes/radios, validity is handled by native constraints; for text-like inputs check value.
     if (typeof el.checkValidity === "function" && !el.checkValidity()) {
+      console.log("Elden Overlay: Required field validation failed on blur");
       triggerFailed();
     }
   },
   true
 );
 
-// On tab close / refresh: best-effort "YOU DIED" overlay on the *current* tab.
-// Note: browsers may still not paint during unload in some cases.
+/*************************
+ * PAGE LEAVE (REFRESH/CLOSE)
+ *************************/
 const onLeavingPage = () => {
   try {
+    console.log("Elden Overlay: Page leaving, showing death overlay");
     showOverlay("died", settings.customText, { immediate: true });
-  } catch {
-    // ignore
+  } catch (err) {
+    console.error("Elden Overlay: Error on page leave:", err);
   }
 };
 
 window.addEventListener("beforeunload", onLeavingPage);
 window.addEventListener("pagehide", onLeavingPage);
 
-// Gmail send → Victory
+/*************************
+ * GMAIL SEND → VICTORY
+ *************************/
 document.addEventListener("click", e => {
   if (!location.hostname.includes("mail.google.com")) return;
   if (!(e.target instanceof Element)) return;
   const sendBtn = e.target.closest('div[role="button"][data-tooltip^="Send"]');
-  if (sendBtn) showOverlay("victory");
+  if (sendBtn) {
+    console.log("Elden Overlay: Gmail send detected");
+    showOverlay("victory");
+  }
 });
 
-// Form submit
+/*************************
+ * FORM SUBMIT → VICTORY
+ *************************/
 document.addEventListener(
   "submit",
   (e) => {
     const form = e.target;
 
     if (!form.checkValidity()) {
+      console.log("Elden Overlay: Form submit blocked - invalid");
       e.preventDefault();
       triggerFailed();
       return;
     }
+    
+    console.log("Elden Overlay: Form submitted successfully");
     failStreak = 0;
     showOverlay("victory");
   },
   true
 );
 
-// Debug boss voice keys
-document.addEventListener("keydown", e => {
-  if (e.key === "M") playSound("malenia.mp3");
-  if (e.key === "G") playSound("morgott.mp3");
-  if (e.key === "O") playSound("morgott.mp3");
+/*************************
+ * NAVIGATION EVENTS
+ *************************/
+// Back button pressed → Death sound
+window.addEventListener("popstate", () => {
+  console.log("Elden Overlay: Back button pressed");
+  playSound("died.mp3");
 });
 
-} // end guard wrapper
+// Page fully loaded → Grace sound (subtle, no overlay)
+let pageLoadSoundPlayed = false;
+window.addEventListener("load", () => {
+  if (pageLoadSoundPlayed) return;
+  pageLoadSoundPlayed = true;
+  
+  // Only play on actual page navigation, not embedded frames
+  if (window === window.top) {
+    console.log("Elden Overlay: Page fully loaded");
+    // Just sound, no overlay (grace overlay comes from new tab event)
+    setTimeout(() => {
+      playSound("grace.mp3");
+    }, 500);
+  }
+});
+
+/*************************
+ * LINK CLICKS → Subtle sound
+ *************************/
+let lastLinkClickAt = 0;
+document.addEventListener("click", (e) => {
+  const link = e.target.closest("a");
+  if (!link || !link.href) return;
+  
+  // Ignore same-page anchors
+  if (link.href.startsWith("#") || link.getAttribute("href")?.startsWith("#")) return;
+  
+  // Cooldown to avoid spam
+  const now = Date.now();
+  if (now - lastLinkClickAt < 1000) return;
+  lastLinkClickAt = now;
+  
+  // Ignore if opens in new tab
+  if (link.target === "_blank" || e.ctrlKey || e.metaKey) return;
+  
+  console.log("Elden Overlay: Navigation link clicked");
+  // Quick subtle sound for navigation
+  playSound("grace.mp3");
+}, true);
+
+/*************************
+ * ERROR HANDLING → Failed sound
+ *************************/
+window.addEventListener("error", (e) => {
+  // Only trigger on major script errors, not resource loading
+  if (e.error && e.error.stack) {
+    console.log("Elden Overlay: JavaScript error detected");
+    // Don't show overlay for every error, just play sound
+    const now = Date.now();
+    if (now - lastFailedAt > 5000) { // 5 second cooldown
+      playSound("morgott.mp3");
+      lastFailedAt = now;
+    }
+  }
+}, true);
+
+/*************************
+ * AJAX/FETCH FAILURES → Morgott sound
+ *************************/
+let lastNetworkErrorAt = 0;
+const originalFetch = window.fetch;
+window.fetch = async (...args) => {
+  try {
+    const response = await originalFetch(...args);
+    
+    // Trigger on HTTP errors (400, 500, etc)
+    if (!response.ok && response.status >= 400) {
+      const now = Date.now();
+      if (now - lastNetworkErrorAt > 3000) {
+        console.log("Elden Overlay: Network error detected:", response.status);
+        playSound("morgott.mp3");
+        lastNetworkErrorAt = now;
+      }
+    }
+    
+    return response;
+  } catch (err) {
+    const now = Date.now();
+    if (now - lastNetworkErrorAt > 3000) {
+      console.log("Elden Overlay: Network request failed");
+      playSound("morgott.mp3");
+      lastNetworkErrorAt = now;
+    }
+    throw err;
+  }
+};
+
+/*************************
+ * CONSOLE ERRORS → Subtle warning
+ *************************/
+const originalConsoleError = console.error;
+console.error = (...args) => {
+  // Check if it's a real error (not just a warning or our own logs)
+  const errorStr = args.join(" ");
+  if (!errorStr.includes("Elden Overlay") && args[0] instanceof Error) {
+    const now = Date.now();
+    if (now - lastFailedAt > 10000) {
+      console.log("Elden Overlay: Console error detected");
+      playSound("morgott.mp3");
+      lastFailedAt = now;
+    }
+  }
+  originalConsoleError.apply(console, args);
+};
+
+/*************************
+ * DEBUG KEYS
+ *************************/
+document.addEventListener("keydown", e => {
+  // Shift+Ctrl+D = Test death sound
+  if (e.shiftKey && e.ctrlKey && e.key === "D") {
+    console.log("Debug: Testing death sound");
+    showOverlay("died");
+    e.preventDefault();
+  }
+  // Shift+Ctrl+G = Test grace sound
+  if (e.shiftKey && e.ctrlKey && e.key === "G") {
+    console.log("Debug: Testing grace sound");
+    showOverlay("grace");
+    e.preventDefault();
+  }
+  // Shift+Ctrl+V = Test victory sound
+  if (e.shiftKey && e.ctrlKey && e.key === "V") {
+    console.log("Debug: Testing victory sound");
+    showOverlay("victory");
+    e.preventDefault();
+  }
+  // Shift+Ctrl+F = Test failed sound (Morgott)
+  if (e.shiftKey && e.ctrlKey && e.key === "F") {
+    console.log("Debug: Testing failed sound");
+    showOverlay("failed");
+    e.preventDefault();
+  }
+  // Shift+Ctrl+M = Test Malenia sound
+  if (e.shiftKey && e.ctrlKey && e.key === "M") {
+    console.log("Debug: Testing Malenia sound");
+    showOverlay("malenia");
+    e.preventDefault();
+  }
+});
+
+// Initialize audio on first user interaction
+document.addEventListener('click', initAudio, { once: true });
+document.addEventListener('keydown', initAudio, { once: true });
+
+} // end guard
