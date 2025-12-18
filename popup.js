@@ -1,4 +1,3 @@
-const text = document.getElementById("text");
 const volume = document.getElementById("volume");
 const statusEl = document.getElementById("status");
 
@@ -47,8 +46,7 @@ const sendToActiveTab = async (message) => {
 };
 
 // Load settings
-chrome.storage.sync.get(null, (data) => {
-  text.value = data.customText || "";
+chrome.storage.sync.get({ volume: 0.8 }, (data) => {
   volume.value = data.volume ?? 0.8;
   console.log("Popup: Settings loaded:", data);
 });
@@ -56,7 +54,6 @@ chrome.storage.sync.get(null, (data) => {
 // Save settings
 document.getElementById("save").onclick = async () => {
   const newSettings = {
-    customText: text.value,
     volume: Number(volume.value)
   };
   
@@ -106,8 +103,7 @@ document.getElementById("testDied").onclick = async () => {
     await sendToActiveTab({
       type: "ELDEN_TRIGGER",
       action: "overlay",
-      stateKey: "died",
-      customText: text.value
+      stateKey: "died"
     });
     
     setStatus("Death shown!");
@@ -136,10 +132,10 @@ document.getElementById("testVictory").onclick = async () => {
   }
 };
 
-// Test Foul Tarnished
+// Test Morgott/Failed
 document.getElementById("testFailed").onclick = async () => {
   try {
-    setStatus("Testing failed...");
+    setStatus("Testing Morgott...");
     console.log("Popup: Test failed");
     
     await sendToActiveTab({ 
@@ -148,7 +144,26 @@ document.getElementById("testFailed").onclick = async () => {
       stateKey: "failed"
     });
     
-    setStatus("Failed shown!");
+    setStatus("Morgott shown!");
+    setTimeout(() => setStatus(""), 1500);
+  } catch (e) {
+    handleRunError(e);
+  }
+};
+
+// Test Malenia
+document.getElementById("testMalenia").onclick = async () => {
+  try {
+    setStatus("Testing Malenia...");
+    console.log("Popup: Test Malenia");
+    
+    await sendToActiveTab({ 
+      type: "ELDEN_TRIGGER", 
+      action: "overlay", 
+      stateKey: "malenia"
+    });
+    
+    setStatus("Malenia shown!");
     setTimeout(() => setStatus(""), 1500);
   } catch (e) {
     handleRunError(e);

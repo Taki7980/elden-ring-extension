@@ -4,7 +4,110 @@ if (globalThis.__eldenOverlayInjected) {
 } else {
   globalThis.__eldenOverlayInjected = true;
 
+// Check if current page is sensitive (auth, payment, etc.)
+const isSensitivePage = () => {
+  const url = window.location.href.toLowerCase();
+  const pathname = window.location.pathname.toLowerCase();
+  
+  const sensitivePatterns = [
+    '/login',
+    '/signin',
+    '/sign-in',
+    '/signup',
+    '/sign-up',
+    '/register',
+    '/auth',
+    '/authentication',
+    '/oauth',
+    '/checkout',
+    '/payment',
+    '/pay',
+    '/billing',
+    '/transaction',
+    '/transfer',
+    '/bank',
+    '/wallet',
+    '/account/security',
+    '/account/password',
+    '/password/reset',
+    '/verification',
+    '/verify',
+    '/2fa',
+    '/mfa',
+    '/confirm',
+    '/cart/checkout'
+  ];
+  
+  const sensitiveKeywords = [
+    'paypal.com',
+    'stripe.com',
+    'square.com',
+    'venmo.com',
+    'cashapp.com',
+    'coinbase.com',
+    'binance.com',
+    'kraken.com',
+    'accounts.google.com',
+    'login.microsoftonline.com',
+    'appleid.apple.com',
+    'secure.chase.com',
+    'secure.bankofamerica.com',
+    'online.citi.com',
+    'wellsfargo.com',
+    'usbank.com',
+    'capitalone.com'
+  ];
+  
+  const hasSensitivePattern = sensitivePatterns.some(pattern => pathname.includes(pattern) || url.includes(pattern));
+  const hasSensitiveDomain = sensitiveKeywords.some(keyword => url.includes(keyword));
+  
+  return hasSensitivePattern || hasSensitiveDomain;
+};
+
+// Skip initialization if on sensitive page
+if (isSensitivePage()) {
+  console.log("Elden Overlay: Sensitive page detected, extension disabled for safety");
+  // Exit immediately without initializing anything
+} else {
+
 console.log("Elden Overlay: Content script initialized");
+
+/*************************
+ * DEMOTIVATING TEXTS
+ *************************/
+const MORGOTT_TEXTS = [
+  "UNWORTHY TARNISHED",
+  "FOUL TARNISHED",
+  "THOU ART UNFIT",
+  "PATHETIC ATTEMPT",
+  "WOEFUL FAILURE",
+  "TRY AGAIN TARNISHED",
+  "INSUFFICIENT SKILL",
+  "LACKING FORTITUDE",
+  "GRACE ELUDES THEE",
+  "WEAK ADVERSARY",
+  "EMBOLDENED BY FLAME",
+  "PUT THESE FOOLISH AMBITIONS TO REST"
+];
+
+const MALENIA_TEXTS = [
+  "I AM MALENIA",
+  "BLADE OF MIQUELLA",
+  "KNOW TRUE DEFEAT",
+  "I HAVE NEVER KNOWN DEFEAT",
+  "YOUR SKILL IS LACKING",
+  "FALL BEFORE ME",
+  "SCARLET AEONIA BLOOMS",
+  "INADEQUATE WARRIOR",
+  "BOW TO THE GODDESS",
+  "WITNESS TRUE POWER",
+  "YOU WILL WITNESS TRUE HORROR",
+  "LET YOUR FLESH BE CONSUMED"
+];
+
+const getRandomText = (textArray) => {
+  return textArray[Math.floor(Math.random() * textArray.length)];
+};
 
 /*************************
  * STATES
@@ -16,22 +119,22 @@ const STATES = {
     sound: "died.mp3"
   },
   grace: {
-    text: "LOST GRACE FOUND",
+    text: "SITE OF GRACE DISCOVERED",
     color: "#d4af37",
     sound: "grace.mp3"
   },
   victory: {
-    text: "GREAT RUNE RESTORED",
+    text: "GREAT ENEMY FELLED",
     color: "#d4af37",
     sound: "victory.mp3"
   },
   failed: {
-    text: "FOUL TARNISHED",
+    text: null,
     color: "#c2a14d",
     sound: "morgott.mp3"
   },
   malenia: {
-    text: "I AM MALENIA",
+    text: null,
     color: "#b8860b",
     sound: "malenia.mp3"
   }
@@ -41,33 +144,24 @@ const STATES = {
  * SETTINGS
  *************************/
 let settings = {
-  volume: 0.8,
-  customText: "YOU DIED"
+  volume: 0.8
 };
 
 let overlayPending = false;
 
 chrome.storage.sync.get(settings, data => {
   settings = { ...settings, ...data };
-  console.log("Elden Overlay: Settings loaded:", settings);
 });
 
 chrome.storage.onChanged.addListener((changes) => {
   if (changes.volume) {
     settings.volume = changes.volume.newValue;
-    console.log("Elden Overlay: Volume updated:", settings.volume);
-  }
-  if (changes.customText) {
-    settings.customText = changes.customText.newValue;
-    console.log("Elden Overlay: Custom text updated:", settings.customText);
   }
 });
 
 // Listen for triggers from background script
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (!msg || msg.type !== "ELDEN_TRIGGER") return;
-
-  console.log("Elden Overlay: Received trigger:", msg);
 
   const { action, stateKey, customText } = msg;
 
@@ -81,66 +175,83 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 });
 
 /*************************
- * AUDIO MANAGER - SIMPLIFIED
+ * OPTIMIZED AUDIO MANAGER
  *************************/
 let audioContext = null;
 let audioBuffers = {};
+let isPreloading = false;
+let preloadComplete = false;
 
-// Initialize Web Audio API (more reliable than Audio elements)
 const initAudio = async () => {
-  if (audioContext) return;
+  if (audioContext) return audioContext;
   
   try {
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    console.log("Audio context created");
-  } catch (err) {
-    console.error("Failed to create audio context:", err);
-  }
-};
-
-// Load and cache audio file
-const loadSound = async (filename) => {
-  if (audioBuffers[filename]) {
-    return audioBuffers[filename];
-  }
-
-  try {
-    const url = chrome.runtime.getURL(`sounds/${filename}`);
-    console.log("Loading audio from:", url);
     
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    
-    const arrayBuffer = await response.arrayBuffer();
-    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-    
-    audioBuffers[filename] = audioBuffer;
-    console.log("Audio loaded successfully:", filename);
-    return audioBuffer;
-  } catch (err) {
-    console.error("Failed to load audio:", filename, err);
-    return null;
-  }
-};
-
-// Play sound using Web Audio API
-const playSound = async (filename) => {
-  console.log("Playing sound:", filename);
-  
-  try {
-    await initAudio();
-    
-    // Resume context if suspended (browser autoplay policy)
     if (audioContext.state === 'suspended') {
       await audioContext.resume();
     }
     
-    const buffer = await loadSound(filename);
+    console.log("Audio context created:", audioContext.state);
+    return audioContext;
+  } catch (err) {
+    console.error("Failed to create audio context:", err);
+    return null;
+  }
+};
+
+const preloadAllSounds = async () => {
+  if (isPreloading || preloadComplete) return;
+  isPreloading = true;
+
+  const sounds = ["died.mp3", "grace.mp3", "victory.mp3", "malenia.mp3", "morgott.mp3"];
+  
+  await initAudio();
+  if (!audioContext) return;
+
+  const loadPromises = sounds.map(async (filename) => {
+    try {
+      const url = chrome.runtime.getURL(`sounds/${filename}`);
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
+      const arrayBuffer = await response.arrayBuffer();
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      
+      audioBuffers[filename] = audioBuffer;
+      console.log(`✓ Preloaded: ${filename}`);
+    } catch (err) {
+      console.error(`Failed to preload ${filename}:`, err);
+    }
+  });
+
+  await Promise.all(loadPromises);
+  preloadComplete = true;
+  console.log("All audio preloaded successfully");
+};
+
+const playSound = async (filename) => {
+  try {
+    if (!audioContext) {
+      await initAudio();
+    }
+    
+    if (audioContext.state === 'suspended') {
+      await audioContext.resume();
+    }
+    
+    const buffer = audioBuffers[filename];
     if (!buffer) {
-      console.error("No buffer for:", filename);
-      return;
+      console.warn(`Sound ${filename} not preloaded, loading now...`);
+      const url = chrome.runtime.getURL(`sounds/${filename}`);
+      const response = await fetch(url);
+      const arrayBuffer = await response.arrayBuffer();
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      audioBuffers[filename] = audioBuffer;
+      return playSound(filename);
     }
     
     const source = audioContext.createBufferSource();
@@ -153,18 +264,15 @@ const playSound = async (filename) => {
     gainNode.connect(audioContext.destination);
     
     source.start(0);
-    console.log("Sound playing:", filename);
+    console.log(`🔊 Playing: ${filename}`);
     
   } catch (err) {
-    console.error("Error playing sound:", filename, err);
+    console.error(`Error playing sound ${filename}:`, err);
     
-    // Fallback to basic Audio element
     try {
-      console.log("Trying fallback audio method");
       const audio = new Audio(chrome.runtime.getURL(`sounds/${filename}`));
       audio.volume = settings.volume;
       await audio.play();
-      console.log("Fallback audio played");
     } catch (fallbackErr) {
       console.error("Fallback audio also failed:", fallbackErr);
     }
@@ -172,31 +280,68 @@ const playSound = async (filename) => {
 };
 
 /*************************
- * OVERLAY
+ * OPTIMIZED ERDTREE LEAVES
+ *************************/
+function createErdtreeLeaves() {
+  const container = document.createElement("div");
+  container.className = "erdtree-leaves-container";
+  
+  const leafCount = 12 + Math.floor(Math.random() * 5);
+  
+  for (let i = 0; i < leafCount; i++) {
+    const leaf = document.createElement("div");
+    leaf.className = "erdtree-leaf";
+    
+    const left = Math.random() * 100;
+    const delay = Math.random() * 4;
+    const duration = 7 + Math.random() * 4;
+    const size = 0.6 + Math.random() * 0.6;
+    
+    leaf.style.cssText = `
+      left: ${left}%;
+      animation-delay: ${delay}s;
+      animation-duration: ${duration}s;
+      transform: scale(${size});
+    `;
+    
+    container.appendChild(leaf);
+  }
+  
+  return container;
+}
+
+/*************************
+ * OPTIMIZED OVERLAY
  *************************/
 function showOverlay(stateKey, customText, opts = {}) {
   const state = STATES[stateKey];
   if (!state) {
-    console.error("Elden Overlay: Invalid state key:", stateKey);
+    console.error("Invalid state key:", stateKey);
     return;
   }
 
-  console.log("Elden Overlay: Showing overlay:", stateKey);
-
   const immediate = Boolean(opts.immediate);
 
-  // Prevent re-entrancy
   if (overlayPending || document.getElementById("elden-overlay")) {
-    console.log("Elden Overlay: Already showing, skipping");
+    console.log("Overlay already showing, skipping");
     return;
   }
   overlayPending = true;
 
-  // Camera shake on death
+  if (state.sound) {
+    playSound(state.sound);
+  }
+
   if (stateKey === "died") {
-    document.body.style.transition = "transform 0.12s ease";
+    document.body.style.willChange = "transform";
+    document.body.style.transition = "transform 0.1s ease";
     document.body.style.transform = "scale(1.01)";
-    setTimeout(() => (document.body.style.transform = "scale(1)"), 180);
+    setTimeout(() => {
+      document.body.style.transform = "scale(1)";
+      setTimeout(() => {
+        document.body.style.willChange = "auto";
+      }, 100);
+    }, 150);
   }
 
   const overlay = document.createElement("div");
@@ -204,39 +349,64 @@ function showOverlay(stateKey, customText, opts = {}) {
   overlay.className = "souls-overlay";
   overlay.dataset.state = stateKey;
 
+  if (stateKey === "grace" || stateKey === "victory") {
+    const leaves = createErdtreeLeaves();
+    overlay.appendChild(leaves);
+  }
+
   const text = document.createElement("div");
   text.className = "souls-text";
-  text.textContent = customText || state.text;
+  
+  let displayText = customText || state.text;
+  if (stateKey === "failed" && !customText) {
+    displayText = getRandomText(MORGOTT_TEXTS);
+  } else if (stateKey === "malenia" && !customText) {
+    displayText = getRandomText(MALENIA_TEXTS);
+  }
+  
+  text.textContent = displayText;
   text.style.color = state.color;
 
   overlay.appendChild(text);
 
-  // Append to <html> for better fixed positioning
-  (document.documentElement || document.body).appendChild(overlay);
+  const fragment = document.createDocumentFragment();
+  fragment.appendChild(overlay);
+  (document.documentElement || document.body).appendChild(fragment);
 
   if (immediate) {
     overlay.classList.add("show");
   } else {
-    requestAnimationFrame(() => overlay.classList.add("show"));
+    requestAnimationFrame(() => {
+      overlay.classList.add("show");
+    });
   }
 
-  // Play sound
-  if (state.sound) {
-    console.log("Elden Overlay: Playing state sound:", state.sound);
-    playSound(state.sound);
+  if (immediate) {
+    setTimeout(() => {
+      if (overlay && overlay.parentNode) {
+        overlay.remove();
+      }
+      overlayPending = false;
+    }, 100);
+    return;
   }
 
-  if (immediate) return;
-
-  const visibleMs = stateKey === "grace" ? 2400 : 1800;
+  const visibleMs = stateKey === "grace" ? 2200 : 1600;
   setTimeout(() => {
+    if (!overlay || !overlay.parentNode) {
+      overlayPending = false;
+      return;
+    }
+    
     overlay.classList.remove("show");
     overlay.classList.add("hide");
+    
     setTimeout(() => {
-      overlay.remove();
+      if (overlay && overlay.parentNode) {
+        overlay.remove();
+      }
       overlayPending = false;
-      console.log("Elden Overlay: Overlay removed");
-    }, 350);
+    }, 300);
   }, visibleMs);
 }
 
@@ -244,7 +414,7 @@ function showOverlay(stateKey, customText, opts = {}) {
  * FORM VALIDATION TRIGGERS
  *************************/
 let lastFailedAt = 0;
-const failedCooldownMs = 2500;
+const failedCooldownMs = 2000;
 
 let failStreak = 0;
 let failStreakResetTimer = null;
@@ -258,11 +428,10 @@ const triggerFailed = () => {
   if (failStreakResetTimer) clearTimeout(failStreakResetTimer);
   failStreakResetTimer = setTimeout(() => {
     failStreak = 0;
-  }, 15000);
+  }, 12000);
 
-  console.log("Elden Overlay: Validation failed, streak:", failStreak);
+  console.log("Validation failed, streak:", failStreak);
 
-  // Malenia on 3+ streaks, Morgott normally
   if (failStreak >= 3) {
     showOverlay("malenia");
   } else {
@@ -270,49 +439,24 @@ const triggerFailed = () => {
   }
 };
 
-// HTML5 validation failure
-document.addEventListener("invalid", () => {
-  console.log("Elden Overlay: Invalid event triggered");
+document.addEventListener("invalid", (e) => {
   triggerFailed();
-}, true);
+}, { capture: true, passive: true });
 
-// Blur on required fields
-document.addEventListener(
-  "blur",
-  (e) => {
-    const el = e.target;
-    if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement)) return;
-    if (!el.required) return;
+document.addEventListener("blur", (e) => {
+  const el = e.target;
+  if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement)) return;
+  if (!el.required) return;
 
-    if (typeof el.checkValidity === "function" && !el.checkValidity()) {
-      console.log("Elden Overlay: Required field validation failed on blur");
-      triggerFailed();
-    }
-  },
-  true
-);
+  if (typeof el.checkValidity === "function" && !el.checkValidity()) {
+    triggerFailed();
+  }
+}, { capture: true, passive: true });
 
 /*************************
- * PAGE LEAVE (CLOSE TAB ONLY - NOT RELOAD)
+ * PAGE LEAVE - DISABLED (handled by background.js)
  *************************/
-const onLeavingPage = (e) => {
-  // Only trigger death overlay if it's an actual navigation away or tab close
-  // Don't trigger on page reload
-  if (e.type === "beforeunload" && e.returnValue === undefined) {
-    // This is likely a reload, not a close
-    return;
-  }
-  
-  try {
-    console.log("Elden Overlay: Page leaving (tab close), showing death overlay");
-    showOverlay("died", settings.customText, { immediate: true });
-  } catch (err) {
-    console.error("Elden Overlay: Error on page leave:", err);
-  }
-};
-
-// Only use pagehide for tab close detection (more reliable)
-window.addEventListener("pagehide", onLeavingPage);
+// Removed pagehide listener - death screen now only shown via background.js when tab closes
 
 /*************************
  * GMAIL SEND → VICTORY
@@ -322,84 +466,51 @@ document.addEventListener("click", e => {
   if (!(e.target instanceof Element)) return;
   const sendBtn = e.target.closest('div[role="button"][data-tooltip^="Send"]');
   if (sendBtn) {
-    console.log("Elden Overlay: Gmail send detected");
     showOverlay("victory");
   }
-});
+}, { passive: true });
 
 /*************************
  * FORM SUBMIT → VICTORY
  *************************/
-document.addEventListener(
-  "submit",
-  (e) => {
-    const form = e.target;
+document.addEventListener("submit", (e) => {
+  const form = e.target;
 
-    if (!form.checkValidity()) {
-      console.log("Elden Overlay: Form submit blocked - invalid");
-      e.preventDefault();
-      triggerFailed();
-      return;
-    }
-    
-    console.log("Elden Overlay: Form submitted successfully");
-    failStreak = 0;
-    showOverlay("victory");
-  },
-  true
-);
+  if (!form.checkValidity()) {
+    e.preventDefault();
+    triggerFailed();
+    return;
+  }
+  
+  failStreak = 0;
+  showOverlay("victory");
+}, { capture: true });
 
 /*************************
- * NAVIGATION EVENTS
+ * NAVIGATION EVENTS - REMOVED
  *************************/
-// Back button pressed → Death sound only (no overlay)
-window.addEventListener("popstate", () => {
-  console.log("Elden Overlay: Back button pressed");
-  playSound("died.mp3");
-});
+// Don't play sound on navigation - too intrusive
 
 /*************************
- * LINK CLICKS → Subtle grace sound
+ * LINK CLICKS - REMOVED
  *************************/
-let lastLinkClickAt = 0;
-document.addEventListener("click", (e) => {
-  const link = e.target.closest("a");
-  if (!link || !link.href) return;
-  
-  // Ignore same-page anchors
-  if (link.href.startsWith("#") || link.getAttribute("href")?.startsWith("#")) return;
-  
-  // Cooldown to avoid spam
-  const now = Date.now();
-  if (now - lastLinkClickAt < 1000) return;
-  lastLinkClickAt = now;
-  
-  // Ignore if opens in new tab
-  if (link.target === "_blank" || e.ctrlKey || e.metaKey) return;
-  
-  console.log("Elden Overlay: Navigation link clicked");
-  // Quick subtle sound for navigation
-  playSound("grace.mp3");
-}, true);
+// Don't play sound on link clicks - grace only shown when explicitly visiting new domains
 
 /*************************
- * ERROR HANDLING → Failed sound
+ * ERROR HANDLING
  *************************/
 window.addEventListener("error", (e) => {
-  // Only trigger on major script errors, not resource loading
   if (e.error && e.error.stack) {
-    console.log("Elden Overlay: JavaScript error detected");
-    // Don't show overlay for every error, just play sound
     const now = Date.now();
-    if (now - lastFailedAt > 5000) { // 5 second cooldown
+    if (now - lastFailedAt > 4000) {
       playSound("morgott.mp3");
       lastFailedAt = now;
     }
   }
-}, true);
+}, { capture: true, passive: true });
 
 /*************************
- * AJAX/FETCH FAILURES → Morgott sound
+ * AJAX/FETCH FAILURES
  *************************/
 let lastNetworkErrorAt = 0;
 const originalFetch = window.fetch;
@@ -407,11 +518,9 @@ window.fetch = async (...args) => {
   try {
     const response = await originalFetch(...args);
     
-    // Trigger on HTTP errors (400, 500, etc)
     if (!response.ok && response.status >= 400) {
       const now = Date.now();
-      if (now - lastNetworkErrorAt > 3000) {
-        console.log("Elden Overlay: Network error detected:", response.status);
+      if (now - lastNetworkErrorAt > 2500) {
         playSound("morgott.mp3");
         lastNetworkErrorAt = now;
       }
@@ -420,8 +529,7 @@ window.fetch = async (...args) => {
     return response;
   } catch (err) {
     const now = Date.now();
-    if (now - lastNetworkErrorAt > 3000) {
-      console.log("Elden Overlay: Network request failed");
+    if (now - lastNetworkErrorAt > 2500) {
       playSound("morgott.mp3");
       lastNetworkErrorAt = now;
     }
@@ -433,40 +541,43 @@ window.fetch = async (...args) => {
  * DEBUG KEYS
  *************************/
 document.addEventListener("keydown", e => {
-  // Shift+Ctrl+D = Test death sound
   if (e.shiftKey && e.ctrlKey && e.key === "D") {
-    console.log("Debug: Testing death sound");
     showOverlay("died");
     e.preventDefault();
   }
-  // Shift+Ctrl+G = Test grace sound
   if (e.shiftKey && e.ctrlKey && e.key === "G") {
-    console.log("Debug: Testing grace sound");
     showOverlay("grace");
     e.preventDefault();
   }
-  // Shift+Ctrl+V = Test victory sound
   if (e.shiftKey && e.ctrlKey && e.key === "V") {
-    console.log("Debug: Testing victory sound");
     showOverlay("victory");
     e.preventDefault();
   }
-  // Shift+Ctrl+F = Test failed sound (Morgott)
   if (e.shiftKey && e.ctrlKey && e.key === "F") {
-    console.log("Debug: Testing failed sound");
     showOverlay("failed");
     e.preventDefault();
   }
-  // Shift+Ctrl+M = Test Malenia sound
   if (e.shiftKey && e.ctrlKey && e.key === "M") {
-    console.log("Debug: Testing Malenia sound");
     showOverlay("malenia");
     e.preventDefault();
   }
 });
 
-// Initialize audio on first user interaction
-document.addEventListener('click', initAudio, { once: true });
-document.addEventListener('keydown', initAudio, { once: true });
+/*************************
+ * INITIALIZATION
+ *************************/
+const initializeAudio = () => {
+  preloadAllSounds();
+};
 
+document.addEventListener('click', initializeAudio, { once: true, passive: true });
+document.addEventListener('keydown', initializeAudio, { once: true, passive: true });
+document.addEventListener('mousemove', initializeAudio, { once: true, passive: true });
+document.addEventListener('scroll', initializeAudio, { once: true, passive: true });
+
+setTimeout(preloadAllSounds, 1000);
+
+console.log("Elden Overlay: Initialization complete");
+
+} // end sensitive page check
 } // end guard

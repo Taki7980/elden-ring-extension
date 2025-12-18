@@ -16,14 +16,11 @@
     </div>
 
     <div class="panel">
-      <label class="label" for="text">Custom Text</label>
-      <input class="input" id="text" placeholder="YOU DIED" />
-
       <label class="label" for="volume">Volume</label>
       <input class="range" id="volume" type="range" min="0" max="1" step="0.05" />
 
       <div class="row" style="margin-top:10px">
-        <button class="btn" id="save">Save</button>
+        <button class="btn" id="save">Save Settings</button>
         <button class="btn secondary" id="testGrace" title="Play grace sound">Grace</button>
       </div>
 
@@ -31,15 +28,27 @@
     </div>
 
     <div class="panel">
-      <div class="label">Test Overlay (current tab)</div>
+      <div class="label">Test Overlays (current tab)</div>
       <div class="row">
         <button class="btn danger" id="testDied">You Died</button>
         <button class="btn" id="testVictory">Victory</button>
       </div>
       <div class="row" style="margin-top:8px">
-        <button class="btn secondary" id="testFailed">Foul Tarnished</button>
+        <button class="btn secondary" id="testFailed">Morgott</button>
+        <button class="btn secondary" id="testMalenia">Malenia</button>
       </div>
-      <div class="footer">Tip: won’t run on chrome:// or the Web Store.</div>
+      <div class="footer">Tip: won't run on chrome:// or the Web Store.</div>
+    </div>
+
+    <div class="panel">
+      <div class="label">Features</div>
+      <ul style="margin: 8px 0; padding-left: 20px; font-size: 11px; line-height: 1.6; color: var(--muted);">
+        <li>New domain visits show Grace with Erdtree leaves</li>
+        <li>Form validation failures trigger random boss quotes</li>
+        <li>3+ failures in a row = Malenia appears</li>
+        <li>Erdtree leaves fall during Grace & Victory</li>
+        <li>Tab close shows death screen</li>
+      </ul>
     </div>
 
     <script src="popup.js"></script>
