@@ -293,18 +293,25 @@ document.addEventListener(
 );
 
 /*************************
- * PAGE LEAVE (REFRESH/CLOSE)
+ * PAGE LEAVE (CLOSE TAB ONLY - NOT RELOAD)
  *************************/
-const onLeavingPage = () => {
+const onLeavingPage = (e) => {
+  // Only trigger death overlay if it's an actual navigation away or tab close
+  // Don't trigger on page reload
+  if (e.type === "beforeunload" && e.returnValue === undefined) {
+    // This is likely a reload, not a close
+    return;
+  }
+  
   try {
-    console.log("Elden Overlay: Page leaving, showing death overlay");
+    console.log("Elden Overlay: Page leaving (tab close), showing death overlay");
     showOverlay("died", settings.customText, { immediate: true });
   } catch (err) {
     console.error("Elden Overlay: Error on page leave:", err);
   }
 };
 
-window.addEventListener("beforeunload", onLeavingPage);
+// Only use pagehide for tab close detection (more reliable)
 window.addEventListener("pagehide", onLeavingPage);
 
 /*************************
@@ -345,30 +352,14 @@ document.addEventListener(
 /*************************
  * NAVIGATION EVENTS
  *************************/
-// Back button pressed → Death sound
+// Back button pressed → Death sound only (no overlay)
 window.addEventListener("popstate", () => {
   console.log("Elden Overlay: Back button pressed");
   playSound("died.mp3");
 });
 
-// Page fully loaded → Grace sound (subtle, no overlay)
-let pageLoadSoundPlayed = false;
-window.addEventListener("load", () => {
-  if (pageLoadSoundPlayed) return;
-  pageLoadSoundPlayed = true;
-  
-  // Only play on actual page navigation, not embedded frames
-  if (window === window.top) {
-    console.log("Elden Overlay: Page fully loaded");
-    // Just sound, no overlay (grace overlay comes from new tab event)
-    setTimeout(() => {
-      playSound("grace.mp3");
-    }, 500);
-  }
-});
-
 /*************************
- * LINK CLICKS → Subtle sound
+ * LINK CLICKS → Subtle grace sound
  *************************/
 let lastLinkClickAt = 0;
 document.addEventListener("click", (e) => {
@@ -436,24 +427,6 @@ window.fetch = async (...args) => {
     }
     throw err;
   }
-};
-
-/*************************
- * CONSOLE ERRORS → Subtle warning
- *************************/
-const originalConsoleError = console.error;
-console.error = (...args) => {
-  // Check if it's a real error (not just a warning or our own logs)
-  const errorStr = args.join(" ");
-  if (!errorStr.includes("Elden Overlay") && args[0] instanceof Error) {
-    const now = Date.now();
-    if (now - lastFailedAt > 10000) {
-      console.log("Elden Overlay: Console error detected");
-      playSound("morgott.mp3");
-      lastFailedAt = now;
-    }
-  }
-  originalConsoleError.apply(console, args);
 };
 
 /*************************
